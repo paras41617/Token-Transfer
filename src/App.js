@@ -15,6 +15,7 @@ const App = () => {
   const [transactionStatus, setTransactionStatus] = useState({ success: null, message: "" });
   const [isMetaMaskConnected, setIsMetaMaskConnected] = useState(false);
   const [currentAction, setCurrentAction] = useState("");
+  const [estimatedTime, setEstimatedTime] = useState(null);
 
   const connectToMetaMask = async () => {
     if (window.ethereum) {
@@ -59,36 +60,86 @@ const App = () => {
   }
 
   useEffect(() => {
+    const estimated_time = localStorage.getItem("estimated_time");
+    setEstimatedTime(estimated_time);
     check_meta()
   }, []);
 
+  // function simulateTask() {
+  //   return new Promise(resolve => {
+  //     // Simulating a task that takes 1 minute
+  //     setTimeout(() => {
+  //       console.log("Task completed!");
+  //       resolve();
+  //     }, 60000); // 1 minute in milliseconds
+  //   });
+  // }
+  
   const buyTokens = async () => {
     try {
       await contract.methods.buyTokens(tokensAmount).send({
         from: accounts[0],
         value: web3.utils.toWei(tokensAmount.toString(), 'ether')
       });
+      estimateTransactionTime();
+      // await simulateTask();
       const newBalance = await contract.methods.balanceOf(accounts[0]).call();
       setBalance(newBalance);
       setTransactionStatus({ success: true, message: "Token purchase successful" });
+      localStorage.setItem("estimated_time", null);
     } catch (error) {
       console.error('Error buying tokens:', error);
       setTransactionStatus({ success: false, message: "Error buying tokens" });
+      localStorage.setItem("estimated_time", null);
     }
   };
 
   const transferTokens = async () => {
     try {
       await contract.methods.transfer(receiverAddress, tokensAmount).send({ from: accounts[0] });
-
+      estimateTransactionTime();
+      // await simulateTask();
       const newBalance = await contract.methods.balanceOf(accounts[0]).call();
       setBalance(newBalance);
       setTransactionStatus({ success: true, message: "Token transfer successful" });
+      localStorage.setItem("estimated_time", null);
     } catch (error) {
       console.error('Error transferring tokens:', error);
       setTransactionStatus({ success: false, message: "Error transferring tokens" });
+      localStorage.setItem("estimated_time", null);
     }
   };
+
+  async function estimateTransactionTime() {
+    try {
+      const gasPrice = await web3.eth.getGasPrice();
+      const bigIntGasPrice = Number(gasPrice);
+      const transactionFee = bigIntGasPrice;
+      const latestBlock = await web3.eth.getBlock('latest');
+
+      const bigIntGasUsed = Number(latestBlock.gasUsed);
+      const averageBlockTime = 15
+      const estimatedTimeInSeconds = Number(transactionFee / bigIntGasUsed * Number(averageBlockTime));
+      if (!transactionStatus.success) {
+        setEstimatedTime(estimatedTimeInSeconds);
+        localStorage.setItem("estimated_time",estimatedTimeInSeconds);
+      }
+    } catch (error) {
+      console.error('Error estimating transaction time:', error);
+    }
+  }
+
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.key === 'estimated_time') {
+        setEstimatedTime(event.newValue);
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   return (
     <div className="body">
@@ -106,7 +157,6 @@ const App = () => {
           <h2 className="heading">My Token Wallet</h2>
           <p className="subtext">Account: {accounts[0]}</p>
           <p className="subtext">Tokens Owned: {balance}</p>
-          {console.log("state : ", currentAction)}
           {currentAction === "buy" && (
             <div>
               <label className="input-label">
@@ -162,12 +212,23 @@ const App = () => {
               <p>
                 Transaction Status: {transactionStatus.success ? 'Success' : 'Error'} - {transactionStatus.message}
               </p>
+              <p>
+                Please refresh the page to load current details.
+              </p>
               {transactionStatus.transactionHash && (
                 <p>
                   Transaction Hash: {transactionStatus.transactionHash} (
                   )
                 </p>
               )}
+            </div>
+          )}
+          {estimatedTime !== null && estimatedTime !== "null" && !transactionStatus.success && (
+            <div>
+              <p className="subtext">Estimated Transaction Time: {estimatedTime} seconds</p>
+              <p>
+                Transaction Status: Pending
+              </p>
             </div>
           )}
         </div>
