@@ -1,0 +1,978 @@
+import React, { useState } from 'react';
+import axios from 'axios';
+import Web3 from 'web3';
+
+const App = () => {
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
+  const [result, setResult] = useState('');
+
+  // ERC20 Token contract address and ABI (replace with your contract details)
+  // const contractAddress = '0xYourContractAddress';
+  // const contractAbi = "[]"; // Replace with your ERC20 contract ABI
+
+  // const web3 = new Web3(window.ethereum);
+  // const tokenContract = new web3.eth.Contract(contractAbi, contractAddress);
+
+  const sendTokens = async () => {
+    // try {
+    //   // Ensure MetaMask is connected
+    //   const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    //   const sender = accounts[0];
+
+    //   // Send ERC20 tokens
+    //   const result = await tokenContract.methods.transfer(recipient, amount).send({ from: sender });
+
+    //   // Display transaction result
+    //   setResult(`Transaction Hash: ${result.transactionHash}`);
+    // } catch (error) {
+    //   console.error(error);
+    //   setResult(`Error: ${error.message}`);
+    // }
+  };
+
+  return (
+    <div>
+      <h1>ERC20 Token Sender</h1>
+      <form>
+        <label htmlFor="recipient">Recipient Address</label>
+        <input
+          type="text"
+          id="recipient"
+          placeholder="Enter recipient address"
+          value={recipient}
+          onChange={(e) => setRecipient(e.target.value)}
+          required
+        />
+
+        <label htmlFor="amount">Amount</label>
+        <input
+          type="number"
+          id="amount"
+          placeholder="Enter token amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          required
+        />
+
+        <button type="button" onClick={sendTokens}>
+          Send Tokens
+        </button>
+      </form>
+
+      <div id="result">{result}</div>
+    </div>
+  );
+};
+
+export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useEffect } from 'react';
+import Web3 from 'web3';
+import TokenContract from './artifacts/contracts/Token.sol/Token.json';  // Import your Token contract JSON file
+import AppContract from './artifacts/contracts/App.sol/App.json';  // Import your App contract JSON file
+
+function App() {
+  const [web3, setWeb3] = useState(null);
+  const [account, setAccount] = useState('');
+  const [tokenContract, setTokenContract] = useState(null);
+  const [appContract, setAppContract] = useState(null);
+  const [tokenBalance, setTokenBalance] = useState(0);
+  const [mintAmount, setMintAmount] = useState(0);
+  const [transferAmount, setTransferAmount] = useState(0);
+  const [transferTo, setTransferTo] = useState('');
+
+  useEffect(() => {
+    const initWeb3 = async () => {
+      if (window.ethereum) {
+        const w3 = new Web3(window.ethereum);
+        try {
+          // Request account access
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          setWeb3(w3);
+          const accounts = await w3.eth.getAccounts();
+          setAccount(accounts[0]);
+        } catch (error) {
+          console.error('Error connecting to Ethereum:', error);
+        }
+      } else {
+        console.error('Please install MetaMask!');
+      }
+    };
+
+    initWeb3();
+  }, []);
+
+  useEffect(() => {
+    const initContracts = async () => {
+      if (web3) {
+        try {
+          const tokenContractInstance = new web3.eth.Contract(
+            TokenContract.abi,
+            '0x5FbDB2315678afecb367f032d93F642f64180aa3'
+          );
+          const appContractInstance = new web3.eth.Contract(
+            AppContract.abi,
+            '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'
+          );
+
+          setTokenContract(tokenContractInstance);
+          setAppContract(appContractInstance);
+
+          // Get token balance
+          const balance = await tokenContractInstance.methods.getTokenBalance(account).call();
+          setTokenBalance(balance);
+        } catch (error) {
+          console.error('Error initializing contracts:', error);
+        }
+      }
+    };
+
+    initContracts();
+  }, [web3, account]);
+
+  const mintTokens = async () => {
+    if (tokenContract && mintAmount > 0) {
+      try {
+        await tokenContract.methods.purchaseTokens(mintAmount).send({ from: account, value: mintAmount * tokenContract.tokenPrice });
+        console.log("account : ", account);
+        const balance = await tokenContract.methods.getTokenBalance(account).call();
+        console.log("balance : ", balance);
+        setTokenBalance(balance);
+      } catch (error) {
+        console.error('Error minting tokens:', error);
+      }
+    }
+  };
+
+  const transferTokens = async () => {
+    if (appContract && transferAmount > 0 && transferTo !== '') {
+      try {
+        await appContract.methods.transferTokens(transferTo, transferAmount).send({ from: account });
+        const balance = await tokenContract.methods.getTokenBalance(account).call();
+        setTokenBalance(balance);
+      } catch (error) {
+        console.error('Error transferring tokens:', error);
+      }
+    }
+  };
+
+  return (
+    <div>
+      <h1>Token App</h1>
+      <p>Account: {account}</p>
+      <p>Token Balance: {tokenBalance}</p>
+
+      <div>
+        <h2>Mint Tokens</h2>
+        <input type="number" value={mintAmount} onChange={(e) => setMintAmount(e.target.value)} />
+        <button onClick={mintTokens}>Mint Tokens</button>
+      </div>
+
+      <div>
+        <h2>Transfer Tokens</h2>
+        <input type="text" placeholder="Recipient Address" value={transferTo} onChange={(e) => setTransferTo(e.target.value)} />
+        <input type="number" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} />
+        <button onClick={transferTokens}>Transfer Tokens</button>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useEffect } from 'react';
+import Web3 from 'web3';
+import MyTokenABI from './artifacts/contracts/Token.sol/Token.json';
+import { useDispatch, useSelector } from 'react-redux';
+import { configureStore } from '@reduxjs/toolkit';
+
+const MyTokenAddress = '0x5fbdb2315678afecb367f032d93f642f64180aa3';
+
+const initialState = {
+  transactionStatus: { success: null, message: "", transactionHash: "" },
+  walletConnected: false, // Add a state to track wallet connection status
+};
+
+const rootReducer = (state = initialState, action) => {
+  switch (action.type) {
+    case 'SET_TRANSACTION_STATUS':
+      return {
+        ...state,
+        transactionStatus: action.payload,
+      };
+    case 'SET_WALLET_CONNECTED':
+      return {
+        ...state,
+        walletConnected: action.payload,
+      };
+    default:
+      return state;
+  }
+};
+
+const store = configureStore({
+  reducer: rootReducer,
+});
+
+const App = () => {
+  const dispatch = useDispatch();
+  const transactionStatus = useSelector((state) => state.transactionStatus);
+  const walletConnected = useSelector((state) => state.walletConnected);
+
+  const [web3, setWeb3] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [contract, setContract] = useState(null);
+  const [balance, setBalance] = useState("");
+  const [receiverAddress, setReceiverAddress] = useState("");
+  const [tokensAmount, setTokensAmount] = useState("");
+
+  const setTransactionStatus = (status) => {
+    dispatch({ type: 'SET_TRANSACTION_STATUS', payload: status });
+  };
+
+  useEffect(() => {
+    const initWeb3 = async () => {
+      if (window.ethereum) {
+        const web3Instance = new Web3(window.ethereum);
+        try {
+          await window.ethereum.enable();
+          setWeb3(web3Instance);
+          const accs = await web3Instance.eth.getAccounts();
+          setAccounts(accs);
+          const myTokenContract = new web3Instance.eth.Contract(MyTokenABI.abi, MyTokenAddress);
+          setContract(myTokenContract);
+          const balance = await myTokenContract.methods.balanceOf(accs[0]).call();
+          setBalance(Number(balance));
+          dispatch({ type: 'SET_WALLET_CONNECTED', payload: true });
+        } catch (error) {
+          console.error('Error accessing accounts or contract:', error);
+        }
+      } else {
+        console.error('No Ethereum browser extension detected, please install MetaMask');
+      }
+    };
+
+    initWeb3();
+  }, []);
+
+  const connectWallet = async () => {
+    if (window.ethereum) {
+      try {
+        await window.ethereum.enable();
+        dispatch({ type: 'SET_WALLET_CONNECTED', payload: true });
+      } catch (error) {
+        console.error('Error connecting wallet:', error);
+      }
+    } else {
+      console.error('No Ethereum browser extension detected, please install MetaMask');
+    }
+  };
+
+  const buyTokens = async () => {
+    try {
+      // ... (unchanged code)
+
+      const transaction = await contract.methods.buyTokens(tokensAmount).send({
+        from: accounts[0],
+        value: web3.utils.toWei(tokensAmount.toString(), 'ether')
+      });
+
+      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
+      setBalance(newBalance);
+      setTransactionStatus({ success: true, message: "Token purchase successful", transactionHash: transaction.transactionHash });
+    } catch (error) {
+      console.error('Error buying tokens:', error);
+      setTransactionStatus({ success: false, message: "Error buying tokens", transactionHash: "" });
+    }
+  };
+
+  const transferTokens = async () => {
+    try {
+      // ... (unchanged code)
+
+      const transaction = await contract.methods.transfer(receiverAddress, tokensAmount).send({ from: accounts[0] });
+
+      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
+      setBalance(newBalance);
+      setTransactionStatus({ success: true, message: "Token transfer successful", transactionHash: transaction.transactionHash });
+    } catch (error) {
+      console.error('Error transferring tokens:', error);
+      setTransactionStatus({ success: false, message: "Error transferring tokens", transactionHash: "" });
+    }
+  };
+
+  const withdrawEther = async () => {
+    try {
+      // ... (unchanged code)
+
+      const transaction = await contract.methods.withdrawEther().send({ from: accounts[0] });
+
+      setTransactionStatus({ success: true, message: "Ether withdrawal successful", transactionHash: transaction.transactionHash });
+    } catch (error) {
+      console.error('Error withdrawing Ether:', error);
+      setTransactionStatus({ success: false, message: "Error withdrawing Ether", transactionHash: "" });
+    }
+  };
+
+  return (
+    <div>
+      <h1>My Token Wallet</h1>
+      {walletConnected ? (
+        <>
+          <p>Account: {accounts[0]}</p>
+          <p>Tokens Owned: {balance}</p>
+          <p>Account: {accounts[0]}</p>
+          <p>Tokens Owned: {balance}</p>
+          <label>
+            Receiver Address:
+            <input
+              type="text"
+              value={receiverAddress}
+              onChange={(e) => setReceiverAddress(e.target.value)}
+            />
+          </label>
+          <label>
+            Amount of Tokens:
+            <input
+              type="text"
+              value={tokensAmount}
+              onChange={(e) => setTokensAmount(e.target.value)}
+            />
+          </label>
+          <button onClick={buyTokens}>Buy Tokens</button>
+          <button onClick={transferTokens}>Transfer Tokens</button>
+          <button onClick={withdrawEther}>Withdraw Ether</button>
+
+          {transactionStatus.success !== null && (
+            <div>
+              <p>
+                Transaction Status: {transactionStatus.success ? "Success" : "Error"} - {transactionStatus.message}
+              </p>
+              {transactionStatus.transactionHash && (
+                <p>
+                  Transaction Hash: {transactionStatus.transactionHash}{' '}
+                  (<a href={`https://etherscan.io/tx/${transactionStatus.transactionHash}`} target="_blank" rel="noopener noreferrer">View on Etherscan</a>)
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <p>Read-only mode. Connect your wallet to perform transactions.</p>
+          <button onClick={connectWallet}>Connect Wallet</button>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
+// store.js
+import { configureStore } from '@reduxjs/toolkit';
+
+const initialState = {
+  transactionStatus: { success: null, message: "", transactionHash: "" },
+};
+
+const rootReducer = (state = initialState, action) => {
+  switch (action.type) {
+    case 'SET_TRANSACTION_STATUS':
+      return {
+        ...state,
+        transactionStatus: action.payload,
+      };
+    default:
+      return state;
+  }
+};
+
+const store = configureStore({
+  reducer: rootReducer,
+});
+
+export default store;
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useEffect } from 'react';
+import Web3 from 'web3';
+import MyTokenABI from './artifacts/contracts/Token.sol/Token.json'; // Replace with your ABI file
+
+const MyTokenAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3'; // Replace with your contract address
+
+const App = () => {
+  const [web3, setWeb3] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [contract, setContract] = useState(null);
+  const [balance, setBalance] = useState("");
+  const [receiverAddress, setReceiverAddress] = useState("");
+  const [tokensAmount, setTokensAmount] = useState(""); // State to store the amount of tokens to buy and transfer
+  const [transactionStatus, setTransactionStatus] = useState({ success: null, message: "" });
+  const [isMetaMaskConnected, setIsMetaMaskConnected] = useState(false);
+  const [newGasPrice, setNewGasPrice] = useState("");
+
+  const handleGasPriceChange = (e) => {
+    setNewGasPrice(e.target.value);
+  };
+
+  const increaseGasPrice = async () => {
+    try {
+      await contract.methods.increaseGasPrice(transactionId, web3.utils.toWei(newGasPrice, 'gwei')).send({ from: accounts[0] });
+
+      // Update UI or trigger a refresh to reflect the new gas price
+      // ...
+    } catch (error) {
+      console.error('Error increasing gas price:', error);
+    }
+  };
+
+  const connectToMetaMask = async () => {
+    if (window.ethereum) {
+      const web3Instance = new Web3(window.ethereum);
+      try {
+        await window.ethereum.enable();
+        setWeb3(web3Instance);
+        const accs = await web3Instance.eth.getAccounts();
+        setAccounts(accs);
+        const myTokenContract = new web3Instance.eth.Contract(MyTokenABI.abi, MyTokenAddress);
+        setContract(myTokenContract);
+        const balance = await myTokenContract.methods.balanceOf(accs[0]).call();
+        setBalance(Number(balance));
+        setIsMetaMaskConnected(true);
+
+        // Save the connected account address to localStorage
+        localStorage.setItem('connectedAccount', accs[0]);
+      } catch (error) {
+        console.error('Error accessing accounts or contract:', error);
+      }
+    } else {
+      console.error('No Ethereum browser extension detected, please install MetaMask');
+    }
+  };
+
+  useEffect(() => {
+    // Check if MetaMask is already connected
+    if (window.ethereum && window.ethereum.selectedAddress) {
+      // Retrieve the connected account address from localStorage
+      const connectedAccount = localStorage.getItem('connectedAccount');
+
+      if (connectedAccount) {
+        setAccounts([connectedAccount]);
+        setIsMetaMaskConnected(true);
+
+        const web3Instance = new Web3(window.ethereum);
+        setWeb3(web3Instance);
+
+        const myTokenContract = new web3Instance.eth.Contract(MyTokenABI.abi, MyTokenAddress);
+        setContract(myTokenContract);
+
+        const balance = myTokenContract.methods.balanceOf(connectedAccount).call();
+        setBalance(Number(balance));
+      }
+    }
+  }, []);
+
+
+  const buyTokens = async () => {
+    try {
+      // ... (unchanged code)
+
+      await contract.methods.buyTokens(tokensAmount).send({
+        from: accounts[0],
+        value: web3.utils.toWei(tokensAmount.toString(), 'ether')
+      });
+
+      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
+      setBalance(newBalance);
+      setTransactionStatus({ success: true, message: "Token purchase successful" });
+    } catch (error) {
+      console.error('Error buying tokens:', error);
+      setTransactionStatus({ success: false, message: "Error buying tokens" });
+    }
+  };
+
+  const transferTokens = async () => {
+    try {
+      // ... (unchanged code)
+
+      await contract.methods.transfer(receiverAddress, tokensAmount).send({ from: accounts[0] });
+
+      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
+      setBalance(newBalance);
+      setTransactionStatus({ success: true, message: "Token transfer successful" });
+    } catch (error) {
+      console.error('Error transferring tokens:', error);
+      setTransactionStatus({ success: false, message: "Error transferring tokens" });
+    }
+  };
+
+  const withdrawEther = async () => {
+    try {
+      // ... (unchanged code)
+
+      await contract.methods.withdrawEther().send({ from: accounts[0] });
+
+      setTransactionStatus({ success: true, message: "Ether withdrawal successful" });
+    } catch (error) {
+      console.error('Error withdrawing Ether:', error);
+      setTransactionStatus({ success: false, message: "Error withdrawing Ether" });
+    }
+  };
+
+  return (
+    <div>
+      {(!isMetaMaskConnected && !window.ethereum?.selectedAddress) && (
+        <button onClick={connectToMetaMask}>Connect to MetaMask</button>
+      )}
+
+      {(isMetaMaskConnected || window.ethereum?.selectedAddress) && (
+        <div>
+          <h1>My Token Wallet</h1>
+          <p>Account: {accounts[0]}</p>
+          <p>Tokens Owned: {balance}</p>
+          <p>Current Gas Price: {transactions[transactionId]?.gasPrice} Gwei</p>
+          {/* Input for new gas price */}
+          <label>
+            New Gas Price (Gwei):
+            <input
+              type="text"
+              value={newGasPrice}
+              onChange={handleGasPriceChange}
+            />
+          </label>
+
+          {/* Button to increase gas price */}
+          <button onClick={increaseGasPrice}>Increase Gas Price</button>
+          <label>
+            Receiver Address:
+            <input
+              type="text"
+              value={receiverAddress}
+              onChange={(e) => setReceiverAddress(e.target.value)}
+            />
+          </label>
+          <label>
+            Amount of Tokens:
+            <input
+              type="text"
+              value={tokensAmount}
+              onChange={(e) => setTokensAmount(e.target.value)}
+            />
+          </label>
+          <button onClick={buyTokens}>Buy Tokens</button>
+          <button onClick={transferTokens}>Transfer Tokens</button>
+          <button onClick={withdrawEther}>Withdraw Ether</button>
+
+          {transactionStatus.success !== null && (
+            <div>
+              <p>
+                Transaction Status: {transactionStatus.success ? "Success" : "Error"} - {transactionStatus.message}
+              </p>
+              {transactionStatus.transactionHash && (
+                <p>
+                  Transaction Hash: {transactionStatus.transactionHash}{' '}
+                  (<a href={`https://etherscan.io/tx/${transactionStatus.transactionHash}`} target="_blank" rel="noopener noreferrer">View on Etherscan</a>)
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
+
+
+
+/** @type import('hardhat/config').HardhatUserConfig */
+require("@nomiclabs/hardhat-waffle");
+require("@nomiclabs/hardhat-ethers");
+module.exports = {
+  defaultNetwork: "localhost",
+  networks: {
+    localhost: {
+      url: "http://127.0.0.1:8545", // Update with your local Ethereum node URL
+      mining: {
+        auto: false,
+        interval: 60000, // Set the mining interval in milliseconds (e.g., 5000 milliseconds or 5 seconds)
+      },
+    },
+  },
+  solidity: "0.8.0",
+  paths: {
+    artifacts: './src/artifacts', // Specify your custom artifacts directory path
+    cache: './src',
+  },
+};
+
+
+
+
+
+
+
+import React, { useState, useEffect } from 'react';
+import Web3 from 'web3';
+import './styles.css';
+import MyTokenABI from './artifacts/contracts/Token.sol/Token.json';
+
+const MyTokenAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+
+const App = () => {
+  const [web3, setWeb3] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [contract, setContract] = useState(null);
+  const [balance, setBalance] = useState("");
+  const [receiverAddress, setReceiverAddress] = useState("");
+  const [tokensAmount, setTokensAmount] = useState("");
+  const [transactionStatus, setTransactionStatus] = useState({ success: null, message: "" });
+  const [isMetaMaskConnected, setIsMetaMaskConnected] = useState(false);
+  const [currentAction, setCurrentAction] = useState("");
+
+  const connectToMetaMask = async () => {
+    if (window.ethereum) {
+      const web3Instance = new Web3(window.ethereum);
+      try {
+        await window.ethereum.enable();
+        setWeb3(web3Instance);
+        const accs = await web3Instance.eth.getAccounts();
+        setAccounts(accs);
+        const myTokenContract = new web3Instance.eth.Contract(MyTokenABI.abi, MyTokenAddress);
+        setContract(myTokenContract);
+        const balance = await myTokenContract.methods.balanceOf(accs[0]).call();
+        setBalance(Number(balance));
+        setIsMetaMaskConnected(true);
+        localStorage.setItem('connectedAccount', accs[0]);
+      } catch (error) {
+        console.error('Error accessing accounts or contract:', error);
+      }
+    } else {
+      console.error('No Ethereum browser extension detected, please install MetaMask');
+    }
+  };
+
+  const check_meta = async () => {
+    if (window.ethereum && window.ethereum.selectedAddress) {
+      // Retrieve the connected account address from localStorage
+      const connectedAccount = localStorage.getItem('connectedAccount');
+
+      if (connectedAccount) {
+        setAccounts([connectedAccount]);
+        setIsMetaMaskConnected(true);
+
+        const web3Instance = new Web3(window.ethereum);
+        setWeb3(web3Instance);
+
+        const myTokenContract = new web3Instance.eth.Contract(MyTokenABI.abi, MyTokenAddress);
+        setContract(myTokenContract);
+
+        const balance = await myTokenContract.methods.balanceOf(connectedAccount).call();
+        setBalance(Number(balance));
+      }
+    }
+  }
+
+  useEffect(() => {
+    check_meta()
+  }, []);
+
+
+  const buyTokens = async () => {
+    try {
+      var hash = await contract.methods.buyTokens(tokensAmount).send({
+        from: accounts[0],
+        value: web3.utils.toWei(tokensAmount.toString(), 'ether')
+      });
+      // handleTransaction(hash);
+      await mineBlockWithDelay(60);
+      // getConfirmationTime(hash.transactionHash)
+
+      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
+      setBalance(newBalance);
+      setTransactionStatus({ success: true, message: "Token purchase successful" });
+    } catch (error) {
+      console.error('Error buying tokens:', error);
+      setTransactionStatus({ success: false, message: "Error buying tokens" });
+    }
+  };
+
+  const transferTokens = async () => {
+    try {
+      await contract.methods.transfer(receiverAddress, tokensAmount).send({ from: accounts[0] });
+
+      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
+      setBalance(newBalance);
+      setTransactionStatus({ success: true, message: "Token transfer successful" });
+    } catch (error) {
+      console.error('Error transferring tokens:', error);
+      setTransactionStatus({ success: false, message: "Error transferring tokens" });
+    }
+  };
+
+  const withdrawEther = async () => {
+    try {
+      await contract.methods.withdrawEther().send({ from: accounts[0] });
+
+      setTransactionStatus({ success: true, message: "Ether withdrawal successful" });
+    } catch (error) {
+      console.error('Error withdrawing Ether:', error);
+      setTransactionStatus({ success: false, message: "Error withdrawing Ether" });
+    }
+  };
+
+  const estimateTransactionTime = async (gasPrice) => {
+    try {
+      // Fetch the current gas price from the network
+      const currentGasPrice = await window.ethereum.request({
+        method: 'eth_gasPrice',
+      });
+
+      console.log("current price : ", currentGasPrice);
+
+      // Convert currentGasPrice to BigInt using BigInt function
+      const currentGasPriceBigInt = Number(currentGasPrice);
+
+      // Calculate the time estimate based on the ratio of the provided gas price to the current gas price
+      const ratio = Number(gasPrice) / currentGasPriceBigInt;
+      console.log("ratio : ", ratio);
+      const baseTimeEstimate = 5; // Base time estimate in minutes (adjust as needed)
+
+      // Adjust the time estimate based on the ratio (you may need to experiment with this)
+      const estimatedTime = baseTimeEstimate * Number(ratio); // Convert ratio back to a regular number for multiplication
+
+      return estimatedTime.toFixed(2); // Format the result to two decimal places
+    } catch (error) {
+      console.error('Error estimating transaction time:', error);
+      return 'N/A'; // Return a default value in case of an error
+    }
+  };
+
+  async function mineBlockWithDelay(seconds) {
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const targetTimestamp = currentTimestamp + seconds;
+
+    await web3.provider.send("evm_setNextBlockTimestamp", [targetTimestamp]);
+    await web3.provider.send("evm_mine", []);
+  }
+
+  const getConfirmationTime = async (hash) => {
+    try {
+      const web3 = new Web3(window.ethereum);
+
+      // Get transaction receipt
+      const receipt = await web3.eth.getTransactionReceipt(hash);
+
+      if (receipt && receipt.blockNumber) {
+        const currentBlockNumber = await web3.eth.getBlockNumber();
+        const confirmationTimeInBlocks = currentBlockNumber - receipt.blockNumber;
+
+        // Assuming a block time of 15 seconds (adjust as per your blockchain's block time)
+        const blockTimeSeconds = 15;
+        const confirmationTimeInSeconds = confirmationTimeInBlocks * blockTimeSeconds;
+        console.log("time : ", confirmationTimeInSeconds)
+        // setConfirmationTime(confirmationTimeInSeconds);
+      } else {
+        console.log('Transaction not yet confirmed');
+      }
+    } catch (error) {
+      console.error('Error getting confirmation time:', error);
+    }
+  };
+
+
+  const handleTransaction = async (result) => {
+    try {
+      // Enable the Ethereum provider (MetaMask) in your application
+      // await window.ethereum.enable();
+
+      // // Access the user's selected account
+      // const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      // const userAccount = accounts[0];
+
+      // // Create a transaction object with placeholder values
+      // const transactionObject = {
+      //   from: userAccount,
+      //   to: '0xReceiverAddress', // Replace with the recipient's address
+      //   value: web3.utils.toWei('1', 'ether'), // Example: sending 1 Ether
+      // };
+
+      // // Now, initiate the transaction using MetaMask
+      // const result = await window.ethereum.request({
+      //   method: 'eth_sendTransaction',
+      //   params: [transactionObject],
+      // });
+
+      // Result contains the transaction hash
+      console.log('Transaction Hash:', result);
+      const tx = await web3.eth.getTransaction(result.transactionHash);
+      // console.log(Number(tx.gasPrice));
+
+      const gasPrice = web3.utils.fromWei(tx.gasPrice, 'gwei');
+      console.log("price : ", gasPrice);
+      const gasLimit = tx.gas;
+      console.log("limit : ", gasLimit);
+      const estimatedTime = (Number(gasLimit) * Number(gasPrice)).toFixed(2); // Estimated time in seconds
+
+      console.log(`Estimated time: ${estimatedTime} seconds`);
+
+
+
+      // Estimate the transaction time based on the gas price
+      // const gasPrice = tx.gasPrice || '20000000000'; // Use a default gas price if not set
+      // console.log("gas price : ", gasPrice);
+      // const estimatedTime = await estimateTransactionTime(gasPrice);
+
+      // console.log('Estimated Transaction Time:', estimatedTime, 'minutes');
+    } catch (error) {
+      console.error('Error handling transaction:', error);
+    }
+  };
+
+
+  return (
+    <div className="body">
+      <h1>
+        Transfer App
+      </h1>
+      {!isMetaMaskConnected && !window.ethereum?.selectedAddress && (
+        <button style={{ cursor: 'pointer' }} className="button" onClick={connectToMetaMask}>
+          Connect to MetaMask
+        </button>
+      )}
+
+      {(isMetaMaskConnected || window.ethereum?.selectedAddress) && (
+        <div className="container">
+          <h2 className="heading">My Token Wallet</h2>
+          <p className="subtext">Account: {accounts[0]}</p>
+          <p className="subtext">Tokens Owned: {balance}</p>
+          {console.log("state : ", currentAction)}
+          {currentAction === "buy" && (
+            <div>
+              <label className="input-label">
+                Amount of Tokens:
+                <input
+                  type="text"
+                  value={tokensAmount}
+                  onChange={(e) => setTokensAmount(e.target.value)}
+                  className="input-field"
+                />
+              </label>
+              <button className="action-button" onClick={buyTokens}>
+                Buy Tokens
+              </button>
+            </div>
+          )}
+
+          {currentAction === "transfer" && (
+            <div>
+              <label className="input-label">
+                Receiver Address:
+                <input
+                  type="text"
+                  value={receiverAddress}
+                  onChange={(e) => setReceiverAddress(e.target.value)}
+                  className="input-field"
+                />
+              </label>
+              <label className="input-label">
+                Amount of Tokens:
+                <input
+                  type="text"
+                  value={tokensAmount}
+                  onChange={(e) => setTokensAmount(e.target.value)}
+                  className="input-field"
+                />
+              </label>
+              <button className="action-button" onClick={transferTokens}>
+                Transfer Tokens
+              </button>
+            </div>
+          )}
+
+          <button className="action-button" onClick={() => setCurrentAction("buy")}>
+            Show Buy Option
+          </button>
+          <button className="action-button" onClick={() => setCurrentAction("transfer")}>
+            Show Transfer Option
+          </button>
+
+          {transactionStatus.success !== null && (
+            <div className={`transaction-status ${transactionStatus.success ? 'success' : 'error'}`}>
+              <p>
+                Transaction Status: {transactionStatus.success ? 'Success' : 'Error'} - {transactionStatus.message}
+              </p>
+              {transactionStatus.transactionHash && (
+                <p>
+                  Transaction Hash: {transactionStatus.transactionHash} (
+                  <a
+                    href={`https://etherscan.io/tx/${transactionStatus.transactionHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link"
+                  >
+                    View on Etherscan
+                  </a>
+                  )
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+};
+
+export default App;
