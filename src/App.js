@@ -86,10 +86,12 @@ const App = () => {
       const newBalance = await contract.methods.balanceOf(accounts[0]).call();
       setBalance(newBalance);
       setTransactionStatus({ success: true, message: "Token purchase successful" });
+      localStorage.setItem("transaction_status", JSON.stringify({ success: true, message: "Token purchase successful" }));
       localStorage.setItem("estimated_time", null);
     } catch (error) {
       console.error('Error buying tokens:', error);
       setTransactionStatus({ success: false, message: "Error buying tokens" });
+      localStorage.setItem("transaction_status", JSON.stringify({ success: false, message: "Error buying tokens" }));
       localStorage.setItem("estimated_time", null);
     }
   };
@@ -102,10 +104,12 @@ const App = () => {
       const newBalance = await contract.methods.balanceOf(accounts[0]).call();
       setBalance(newBalance);
       setTransactionStatus({ success: true, message: "Token transfer successful" });
+      localStorage.setItem("transaction_status", JSON.stringify({ success: true, message: "Token transfer successful" }));
       localStorage.setItem("estimated_time", null);
     } catch (error) {
       console.error('Error transferring tokens:', error);
       setTransactionStatus({ success: false, message: "Error transferring tokens" });
+      localStorage.setItem("transaction_status", JSON.stringify({ success: false, message: "Error transferring tokens" }));
       localStorage.setItem("estimated_time", null);
     }
   };
@@ -123,6 +127,7 @@ const App = () => {
       if (!transactionStatus.success) {
         setEstimatedTime(estimatedTimeInSeconds);
         localStorage.setItem("estimated_time",estimatedTimeInSeconds);
+        localStorage.setItem("transaction_status", JSON.stringify({ success: null, message: "" }));
       }
     } catch (error) {
       console.error('Error estimating transaction time:', error);
@@ -133,6 +138,10 @@ const App = () => {
     const handleStorageChange = (event) => {
       if (event.key === 'estimated_time') {
         setEstimatedTime(event.newValue);
+      }
+      if (event.key === 'transaction_status') {
+        console.log("new value : ", event.newValue);
+        setTransactionStatus(JSON.parse(event.newValue));
       }
     };
     window.addEventListener('storage', handleStorageChange);
