@@ -3,7 +3,7 @@ import Web3 from 'web3';
 import './styles.css';
 import MyTokenABI from './artifacts/contracts/Token.sol/Token.json';
 
-const MyTokenAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+const MyTokenAddress = '0x1fbb37117f1b7edaecb23966451f6e5f79593d56';
 
 const App = () => {
   const [web3, setWeb3] = useState(null);
@@ -59,58 +59,71 @@ const App = () => {
     }
   }
 
+  const set_failed = () => {
+    setTransactionStatus({ success: false, message: "Transaction failed" });
+    localStorage.setItem("transaction_status", JSON.stringify({ success: false, message: "Transaction failed" }));
+    localStorage.setItem("estimated_time", null);
+    localStorage.setItem("transaction_hash", JSON.stringify(null));
+  }
+
+  const set_success = () => {
+    setTransactionStatus({ success: true, message: "Transaction successful" });
+    localStorage.setItem("transaction_status", JSON.stringify({ success: true, message: "Transaction successful" }));
+    localStorage.setItem("estimated_time", null);
+    localStorage.setItem("transaction_hash", JSON.stringify(null));
+  }
+
   useEffect(() => {
     const estimated_time = localStorage.getItem("estimated_time");
     setEstimatedTime(estimated_time);
     check_meta()
   }, []);
 
-  // function simulateTask() {
-  //   return new Promise(resolve => {
-  //     // Simulating a task that takes 1 minute
-  //     setTimeout(() => {
-  //       console.log("Task completed!");
-  //       resolve();
-  //     }, 60000); // 1 minute in milliseconds
-  //   });
-  // }
-  
   const buyTokens = async () => {
     try {
-      await contract.methods.buyTokens(tokensAmount).send({
+      const transaction = contract.methods.buyTokens(tokensAmount).send({
         from: accounts[0],
         value: web3.utils.toWei(tokensAmount.toString(), 'ether')
       });
-      estimateTransactionTime();
-      // await simulateTask();
-      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
-      setBalance(newBalance);
-      setTransactionStatus({ success: true, message: "Token purchase successful" });
-      localStorage.setItem("transaction_status", JSON.stringify({ success: true, message: "Token purchase successful" }));
-      localStorage.setItem("estimated_time", null);
+      transaction.on('transactionHash', (hash) => {
+        estimateTransactionTime();
+        localStorage.setItem("transaction_hash", JSON.stringify(hash));
+      });
+      transaction.on('receipt', (receipt) => {
+        const newBalance = contract.methods.balanceOf(accounts[0]).call();
+        setBalance(Number(newBalance));
+        set_success();
+      });
+
+      await transaction.catch((error) => {
+        set_failed()
+      });
     } catch (error) {
-      console.error('Error buying tokens:', error);
-      setTransactionStatus({ success: false, message: "Error buying tokens" });
-      localStorage.setItem("transaction_status", JSON.stringify({ success: false, message: "Error buying tokens" }));
-      localStorage.setItem("estimated_time", null);
+      console.error('Error initiating transaction:', error);
+      set_failed();
     }
   };
 
   const transferTokens = async () => {
     try {
-      await contract.methods.transfer(receiverAddress, tokensAmount).send({ from: accounts[0] });
-      estimateTransactionTime();
-      // await simulateTask();
-      const newBalance = await contract.methods.balanceOf(accounts[0]).call();
-      setBalance(newBalance);
-      setTransactionStatus({ success: true, message: "Token transfer successful" });
-      localStorage.setItem("transaction_status", JSON.stringify({ success: true, message: "Token transfer successful" }));
-      localStorage.setItem("estimated_time", null);
+      const transaction = contract.methods.transfer(receiverAddress, tokensAmount).send({ from: accounts[0] });
+
+      transaction.on('transactionHash', (hash) => {
+        estimateTransactionTime();
+        localStorage.setItem("transaction_hash", JSON.stringify(hash));
+      });
+      transaction.on('receipt', (receipt) => {
+        console.log("receipt : ", receipt);
+        const newBalance = contract.methods.balanceOf(accounts[0]).call();
+        setBalance(Number(newBalance));
+        set_success();
+      });
+      await transaction.catch((error) => {
+        set_failed()
+      });
     } catch (error) {
-      console.error('Error transferring tokens:', error);
-      setTransactionStatus({ success: false, message: "Error transferring tokens" });
-      localStorage.setItem("transaction_status", JSON.stringify({ success: false, message: "Error transferring tokens" }));
-      localStorage.setItem("estimated_time", null);
+      console.log('Error transferring tokens:', error);
+      set_failed();
     }
   };
 
@@ -125,8 +138,8 @@ const App = () => {
       const averageBlockTime = 15
       const estimatedTimeInSeconds = Number(transactionFee / bigIntGasUsed * Number(averageBlockTime));
       if (!transactionStatus.success) {
-        setEstimatedTime(estimatedTimeInSeconds);
-        localStorage.setItem("estimated_time",estimatedTimeInSeconds);
+        setEstimatedTime(estimatedTimeInSeconds / 1000);
+        localStorage.setItem("estimated_time", estimatedTimeInSeconds);
         localStorage.setItem("transaction_status", JSON.stringify({ success: null, message: "" }));
       }
     } catch (error) {
@@ -135,12 +148,12 @@ const App = () => {
   }
 
   useEffect(() => {
+
     const handleStorageChange = (event) => {
       if (event.key === 'estimated_time') {
         setEstimatedTime(event.newValue);
       }
       if (event.key === 'transaction_status') {
-        console.log("new value : ", event.newValue);
         setTransactionStatus(JSON.parse(event.newValue));
       }
     };
@@ -149,6 +162,34 @@ const App = () => {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
+
+  const checkTransactionStatus = async (transactionHash) => {
+    try {
+      const receipt = await web3.eth.getTransactionReceipt(transactionHash);
+
+      if (receipt) {
+        if (Number(receipt.status) === 1) {
+          console.log('Transaction successful');
+          set_success();
+        } else {
+          console.error('Transaction failed');
+          set_failed();
+        }
+      } else {
+        console.log('Transaction not mined yet');
+      }
+    } catch (error) {
+      console.error('Error checking transaction status:', error);
+    }
+  };
+
+  useEffect(() => {
+
+    const hash = localStorage.getItem("transaction_hash");
+    if (JSON.parse(hash) != null && web3) {
+      checkTransactionStatus(JSON.parse(hash));
+    }
+  }, [web3])
 
   return (
     <div className="body">
@@ -166,56 +207,60 @@ const App = () => {
           <h2 className="heading">My Token Wallet</h2>
           <p className="subtext">Account: {accounts[0]}</p>
           <p className="subtext">Tokens Owned: {balance}</p>
-          {currentAction === "buy" && (
+          {estimatedTime == null || estimatedTime == "null" ? (
             <div>
-              <label className="input-label">
-                Amount of Tokens:
-                <input
-                  type="text"
-                  value={tokensAmount}
-                  onChange={(e) => setTokensAmount(e.target.value)}
-                  className="input-field"
-                />
-              </label>
-              <button className="action-button" onClick={buyTokens}>
-                Buy Tokens
+              {currentAction === "buy" && (
+                <div>
+                  <label className="input-label">
+                    Amount of Tokens:
+                    <input
+                      type="text"
+                      value={tokensAmount}
+                      onChange={(e) => setTokensAmount(e.target.value)}
+                      className="input-field"
+                    />
+                  </label>
+                  <button className="action-button" onClick={buyTokens}>
+                    Buy Tokens
+                  </button>
+                </div>
+              )}
+
+              {currentAction === "transfer" && (
+                <div>
+                  <label className="input-label">
+                    Receiver Address:
+                    <input
+                      type="text"
+                      value={receiverAddress}
+                      onChange={(e) => setReceiverAddress(e.target.value)}
+                      className="input-field"
+                    />
+                  </label>
+                  <label className="input-label">
+                    Amount of Tokens:
+                    <input
+                      type="text"
+                      value={tokensAmount}
+                      onChange={(e) => setTokensAmount(e.target.value)}
+                      className="input-field"
+                    />
+                  </label>
+                  <button className="action-button" onClick={transferTokens}>
+                    Transfer Tokens
+                  </button>
+                </div>
+              )}
+
+              <button className="action-button" onClick={() => setCurrentAction("buy")}>
+                Show Buy Option
               </button>
-            </div>
-          )}
-
-          {currentAction === "transfer" && (
-            <div>
-              <label className="input-label">
-                Receiver Address:
-                <input
-                  type="text"
-                  value={receiverAddress}
-                  onChange={(e) => setReceiverAddress(e.target.value)}
-                  className="input-field"
-                />
-              </label>
-              <label className="input-label">
-                Amount of Tokens:
-                <input
-                  type="text"
-                  value={tokensAmount}
-                  onChange={(e) => setTokensAmount(e.target.value)}
-                  className="input-field"
-                />
-              </label>
-              <button className="action-button" onClick={transferTokens}>
-                Transfer Tokens
+              <button className="action-button" onClick={() => setCurrentAction("transfer")}>
+                Show Transfer Option
               </button>
+
             </div>
-          )}
-
-          <button className="action-button" onClick={() => setCurrentAction("buy")}>
-            Show Buy Option
-          </button>
-          <button className="action-button" onClick={() => setCurrentAction("transfer")}>
-            Show Transfer Option
-          </button>
-
+          ) : ""}
           {transactionStatus.success !== null && (
             <div className={`transaction-status ${transactionStatus.success ? 'success' : 'error'}`}>
               <p>
@@ -232,7 +277,7 @@ const App = () => {
               )}
             </div>
           )}
-          {estimatedTime !== null && estimatedTime !== "null" && !transactionStatus.success && (
+          {estimatedTime !== null && estimatedTime !== "null" && transactionStatus.success == null && (
             <div>
               <p className="subtext">Estimated Transaction Time: {estimatedTime} seconds</p>
               <p>
