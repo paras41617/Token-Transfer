@@ -11,7 +11,7 @@ Currently it only supports a test token which the user can buy to see the functi
 
 TestToken (TT) is an ERC-20 token.
 
-A user can buy one TT with 1 ETH.
+A user can buy one TT with 1 Gwei.
 
 Features : 
  - The App supports Metamask Wallet.
@@ -52,14 +52,24 @@ Open another terminal to deploy the smart contract
   npx hardhat run deploy.js
 ```
 
-Start the server
+Copy the deployed Token Address and paste it in App.js
 
 ```bash
-  npm start
+  MyTokenAddress
 ```
 
 The APP can be accessed through url
 
 ```bash
   http://localhost:3000/
+```
+
+## Deployed Test
+
+Below is the deployed link for the App.
+The smart contract is deployed on Sepolia Testnet.
+Therefore, SepoliaETH is required to use the APP.
+
+```bash
+  https://test-token-transfer.netlify.app/
 ```
